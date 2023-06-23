@@ -15,12 +15,14 @@ class ViewController: UIViewController {
     @IBOutlet fileprivate weak var idLabel: UILabel!
     @IBOutlet fileprivate weak var squareConstraint: NSLayoutConstraint!
     var eventSource: EventSource?
+	
+	private let serverURL = URL(string: "http://127.0.0.1:8080/sse")!
+	private let headers = ["Authorization": "Bearer basic-auth-token"]
 
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        let serverURL = URL(string: "http://127.0.0.1:8080/sse")!
-        eventSource = EventSource(url: serverURL, headers: ["Authorization": "Bearer basic-auth-token"])
+        eventSource = EventSource()
 
         eventSource?.onOpen { [weak self] in
             self?.status.backgroundColor = UIColor(red: 166/255, green: 226/255, blue: 46/255, alpha: 1)
@@ -35,7 +37,8 @@ class ViewController: UIViewController {
 
             let retryTime = self?.eventSource?.retryTime ?? 3000
             DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(retryTime)) { [weak self] in
-                self?.eventSource?.connect()
+				guard let self = self else { return }
+				self.eventSource?.connect(url: self.serverURL, headers: self.headers)
             }
         }
 
@@ -80,6 +83,6 @@ class ViewController: UIViewController {
     }
 
     @IBAction func connect(_ sender: Any) {
-        eventSource?.connect()
+		eventSource?.connect(url: serverURL, headers: headers)
     }
 }

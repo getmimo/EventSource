@@ -20,9 +20,6 @@ public protocol EventSourceProtocol {
     /// RetryTime: This can be changed remotly if the server sends an event `retry:`
     var retryTime: Int { get }
 
-    /// URL where EventSource will listen for events.
-    var url: URL { get }
-
     /// The last event id received from server. This id is neccesary to keep track of the last event-id received to avoid
     /// receiving duplicate events after a reconnection.
     var lastEventId: String? { get }
@@ -30,10 +27,16 @@ public protocol EventSourceProtocol {
     /// Current state of EventSource
     var readyState: EventSourceState { get }
 
-    /// Method used to connect to server. It can receive an optional lastEventId indicating the Last-Event-ID
-    ///
-    /// - Parameter lastEventId: optional value that is going to be added on the request header to server.
-    func connect(lastEventId: String?)
+	/// Method used to connect to server.
+	///
+	/// It can receive an optional lastEventId indicating the Last-Event-ID.
+	///
+	/// - Parameter url: url where to listen for events.
+	/// - Parameter headers: headers to use for this connection.
+	/// - Parameter httpMethod: http method to use for this connection. Default is `GET`.
+	/// - Parameter httpBody: http body to use for this connection.
+	/// - Parameter lastEventId: optional value that is going to be added on the request header to server.
+	func connect(url: URL, headers: [String: String], httpMethod: String, httpBody: Data?, lastEventId: String?)
 
     /// Method used to disconnect from server.
     func disconnect()
@@ -76,7 +79,6 @@ public protocol EventSourceProtocol {
 open class EventSource: NSObject, EventSourceProtocol, URLSessionDataDelegate {
     static let DefaultRetryTime = 3000
 
-    public let url: URL
     private(set) public var lastEventId: String?
     private(set) public var retryTime = EventSource.DefaultRetryTime
     private(set) public var headers: [String: String]
@@ -92,13 +94,8 @@ open class EventSource: NSObject, EventSourceProtocol, URLSessionDataDelegate {
     private var mainQueue = DispatchQueue.main
     private var urlSession: URLSession?
 
-    public init(
-        url: URL,
-        headers: [String: String] = [:]
-    ) {
-        self.url = url
-        self.headers = headers
-
+	public override init() {
+		headers = [:]
         readyState = EventSourceState.closed
         operationQueue = OperationQueue()
         operationQueue.maxConcurrentOperationCount = 1
@@ -106,14 +103,24 @@ open class EventSource: NSObject, EventSourceProtocol, URLSessionDataDelegate {
         super.init()
     }
 
-    public func connect(lastEventId: String? = nil) {
-        eventStreamParser = EventStreamParser()
-        readyState = .connecting
+	public func connect(
+	 url: URL,
+	 headers: [String: String] = [:],
+	 httpMethod: String = "GET",
+	 httpBody: Data? = nil,
+	 lastEventId: String? = nil
+ ) {
+	 self.headers = headers
+	 eventStreamParser = EventStreamParser()
+	 readyState = .connecting
 
-        let configuration = sessionConfiguration(lastEventId: lastEventId)
-        urlSession = URLSession(configuration: configuration, delegate: self, delegateQueue: operationQueue)
-        urlSession?.dataTask(with: url).resume()
-    }
+	 let configuration = sessionConfiguration(lastEventId: lastEventId)
+	 urlSession = URLSession(configuration: configuration, delegate: self, delegateQueue: operationQueue)
+	 var request = URLRequest(url: url)
+	 request.httpMethod = httpMethod
+	 request.httpBody = httpBody
+	 urlSession?.dataTask(with: request).resume()
+ }
 
     public func disconnect() {
         readyState = .closed
