@@ -11,16 +11,25 @@ import XCTest
 
 class EventSourceTests: XCTestCase {
 
-    var eventSource: EventSource!
-    let url = URL(string: "https://localhost")!
+    private var eventSource: EventSource!
+	private var url: URL!
+	private var headers: [String: String]!
 
-    override func setUp() {
-        eventSource = EventSource(url: url, headers: ["header": "value"])
-    }
+	override func setUpWithError() throws {
+		try super.setUpWithError()
+		eventSource = EventSource()
+		url = try XCTUnwrap(URL(string: "https://localhost"))
+		 headers = ["header": "value"]
+	}
+	
+	override func tearDown() {
+		eventSource = nil
+		url = nil
+		headers = nil
+		super.tearDown()
+	}
 
     func testCreation() {
-        XCTAssertEqual(url, eventSource.url)
-        XCTAssertEqual(eventSource.headers, ["header": "value"])
         XCTAssertEqual(eventSource.readyState, EventSourceState.closed)
     }
 
@@ -34,7 +43,7 @@ class EventSourceTests: XCTestCase {
         XCTAssertEqual(configuration.timeoutIntervalForRequest, TimeInterval(INT_MAX))
         XCTAssertEqual(configuration.timeoutIntervalForResource, TimeInterval(INT_MAX))
         XCTAssertEqual(configuration.httpAdditionalHeaders as? [String: String], [
-            "Last-Event-Id": "event-id", "Accept": "text/event-stream", "Cache-Control": "no-cache", "header": "value"]
+            "Last-Event-Id": "event-id", "Accept": "text/event-stream", "Cache-Control": "no-cache"]
         )
     }
 
@@ -51,7 +60,7 @@ class EventSourceTests: XCTestCase {
     }
 
     func testRetryTime() {
-        eventSource.connect()
+		eventSource.connect(url: url, headers: headers)
         eventSource.readyStateOpen()
 
         let aSession = URLSession(configuration: URLSessionConfiguration.default)
@@ -132,7 +141,7 @@ class EventSourceTests: XCTestCase {
     }
 
     func testSmallEventStream() {
-        eventSource.connect()
+		eventSource.connect(url: url, headers: headers)
         eventSource.readyStateOpen()
 
         var eventsIds: [String] = []
