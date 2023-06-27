@@ -11,174 +11,183 @@ import XCTest
 
 class EventSourceTests: XCTestCase {
 
-    var eventSource: EventSource!
-    let url = URL(string: "https://localhost")!
+	private var eventSource: EventSource!
+	private var url: URL!
+	private var headers: [String: String]!
 
-    override func setUp() {
-        eventSource = EventSource(url: url, headers: ["header": "value"])
-    }
+	override func setUpWithError() throws {
+		try super.setUpWithError()
+		eventSource = EventSource()
+		url = try XCTUnwrap(URL(string: "https://localhost"))
+		headers = ["header": "value"]
+	}
 
-    func testCreation() {
-        XCTAssertEqual(url, eventSource.url)
-        XCTAssertEqual(eventSource.headers, ["header": "value"])
-        XCTAssertEqual(eventSource.readyState, EventSourceState.closed)
-    }
+	override func tearDown() {
+		eventSource = nil
+		url = nil
+		headers = nil
+		super.tearDown()
+	}
 
-    func testDisconnect() {
-        XCTAssertEqual(eventSource.readyState, EventSourceState.closed)
-    }
+	func testCreation() {
+		XCTAssertEqual(eventSource.readyState, EventSourceState.closed)
+	}
 
-    func testSessionConfiguration() {
-        let configuration = eventSource.sessionConfiguration(lastEventId: "event-id")
+	func testDisconnect() {
+		XCTAssertEqual(eventSource.readyState, EventSourceState.closed)
+	}
 
-        XCTAssertEqual(configuration.timeoutIntervalForRequest, TimeInterval(INT_MAX))
-        XCTAssertEqual(configuration.timeoutIntervalForResource, TimeInterval(INT_MAX))
-        XCTAssertEqual(configuration.httpAdditionalHeaders as? [String: String], [
-            "Last-Event-Id": "event-id", "Accept": "text/event-stream", "Cache-Control": "no-cache", "header": "value"]
-        )
-    }
+	func testSessionConfiguration() {
+		let configuration = eventSource.sessionConfiguration(lastEventId: "event-id")
 
-    func testAddEventListener() {
-        eventSource.addEventListener("event-name") { _, _, _ in }
-        XCTAssertEqual(eventSource.events(), ["event-name"])
-    }
+		XCTAssertEqual(configuration.timeoutIntervalForRequest, TimeInterval(INT_MAX))
+		XCTAssertEqual(configuration.timeoutIntervalForResource, TimeInterval(INT_MAX))
+		XCTAssertEqual(configuration.httpAdditionalHeaders as? [String: String], [
+			"Last-Event-Id": "event-id", "Accept": "text/event-stream", "Cache-Control": "no-cache"]
+		)
+	}
 
-    func testRemoveEventListener() {
-        eventSource.addEventListener("event-name") { _, _, _ in }
-        eventSource.removeEventListener("event-name")
+	func testAddEventListener() {
+		eventSource.addEventListener("event-name") { _, _, _ in }
+		XCTAssertEqual(eventSource.events(), ["event-name"])
+	}
 
-        XCTAssertEqual(eventSource.events(), [])
-    }
+	func testRemoveEventListener() {
+		eventSource.addEventListener("event-name") { _, _, _ in }
+		eventSource.removeEventListener("event-name")
 
-    func testRetryTime() {
-        eventSource.connect()
-        eventSource.readyStateOpen()
+		XCTAssertEqual(eventSource.events(), [])
+	}
 
-        let aSession = URLSession(configuration: URLSessionConfiguration.default)
-        let aSessionDataTask = URLSessionDataTask()
+	func testRetryTime() {
+		eventSource.connect(url: url, headers: headers)
+		eventSource.readyStateOpen()
 
-        let event = """
-        id: event-id-1
-        data: event-data-first
-        retry: 1000
+		let aSession = URLSession(configuration: URLSessionConfiguration.default)
+		let aSessionDataTask = URLSessionDataTask()
 
-        id: event
-        """
+		let event = """
+		id: event-id-1
+		data: event-data-first
+		retry: 1000
 
-        let data = event.data(using: .utf8)!
-        eventSource.urlSession(aSession, dataTask: aSessionDataTask, didReceive: data)
-        XCTAssertEqual(eventSource.retryTime, 1000)
-    }
+		id: event
+		"""
 
-    func testOnOpen() {
-        let expectation = XCTestExpectation(description: "onOpen gets called")
+		let data = event.data(using: .utf8)!
+		eventSource.urlSession(aSession, dataTask: aSessionDataTask, didReceive: data)
+		XCTAssertEqual(eventSource.retryTime, 1000)
+	}
 
-        eventSource.onOpen {
-            XCTAssertEqual(self.eventSource.readyState, EventSourceState.open)
-            expectation.fulfill()
-        }
+	func testOnOpen() {
+		let expectation = XCTestExpectation(description: "onOpen gets called")
 
-        let aSession = URLSession(configuration: URLSessionConfiguration.default)
-        let aSessionDataTask = URLSessionDataTask()
-        let urlResponse = URLResponse(url: url, mimeType: nil, expectedContentLength: 0, textEncodingName: nil)
-        eventSource.urlSession(aSession, dataTask: aSessionDataTask, didReceive: urlResponse) { _ in }
-        wait(for: [expectation], timeout: 2.0)
-    }
+		eventSource.onOpen {
+			XCTAssertEqual(self.eventSource.readyState, EventSourceState.open)
+			expectation.fulfill()
+		}
 
-    func testOnCompleteRetryTrue() {
-        let expectation = XCTestExpectation(description: "onComplete gets called")
-        eventSource.onComplete { statusCode, retry, _ in
-            XCTAssertEqual(statusCode, 200)
-            XCTAssertEqual(retry, false)
-            expectation.fulfill()
-        }
+		let aSession = URLSession(configuration: URLSessionConfiguration.default)
+		let aSessionDataTask = URLSessionDataTask()
+		let urlResponse = URLResponse(url: url, mimeType: nil, expectedContentLength: 0, textEncodingName: nil)
+		eventSource.urlSession(aSession, dataTask: aSessionDataTask, didReceive: urlResponse) { _ in }
+		wait(for: [expectation], timeout: 2.0)
+	}
 
-        let aSession = URLSession(configuration: URLSessionConfiguration.default)
-        let response =  HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: [:])
-        let dataTask = URLSessionDataTaskMock(response: response)
-        eventSource.urlSession(aSession, task: dataTask, didCompleteWithError: nil)
-        wait(for: [expectation], timeout: 2.0)
-    }
+	func testOnCompleteRetryTrue() {
+		let expectation = XCTestExpectation(description: "onComplete gets called")
+		eventSource.onComplete { statusCode, retry, _ in
+			XCTAssertEqual(statusCode, 200)
+			XCTAssertEqual(retry, false)
+			expectation.fulfill()
+		}
 
-    func testOnCompleteRetryFalse() {
-        let expectation = XCTestExpectation(description: "onComplete gets called")
-        eventSource.onComplete { statusCode, retry, _ in
-            XCTAssertEqual(statusCode, 250)
-            XCTAssertEqual(retry, true)
-            expectation.fulfill()
-        }
+		let aSession = URLSession(configuration: URLSessionConfiguration.default)
+		let response =  HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: [:])
+		let dataTask = URLSessionDataTaskMock(response: response)
+		eventSource.urlSession(aSession, task: dataTask, didCompleteWithError: nil)
+		wait(for: [expectation], timeout: 2.0)
+	}
 
-        let aSession = URLSession(configuration: URLSessionConfiguration.default)
-        let response =  HTTPURLResponse(url: url, statusCode: 250, httpVersion: nil, headerFields: [:])
-        let dataTask = URLSessionDataTaskMock(response: response)
-        eventSource.urlSession(aSession, task: dataTask, didCompleteWithError: nil)
-        wait(for: [expectation], timeout: 2.0)
-    }
+	func testOnCompleteRetryFalse() {
+		let expectation = XCTestExpectation(description: "onComplete gets called")
+		eventSource.onComplete { statusCode, retry, _ in
+			XCTAssertEqual(statusCode, 250)
+			XCTAssertEqual(retry, true)
+			expectation.fulfill()
+		}
 
-    func testOnCompleteError() {
-        let expectation = XCTestExpectation(description: "onComplete gets called")
-        eventSource.onComplete { statusCode, retry, error in
-            XCTAssertNotNil(error)
-            XCTAssertNil(retry)
-            XCTAssertNil(statusCode)
-            expectation.fulfill()
-        }
+		let aSession = URLSession(configuration: URLSessionConfiguration.default)
+		let response =  HTTPURLResponse(url: url, statusCode: 250, httpVersion: nil, headerFields: [:])
+		let dataTask = URLSessionDataTaskMock(response: response)
+		eventSource.urlSession(aSession, task: dataTask, didCompleteWithError: nil)
+		wait(for: [expectation], timeout: 2.0)
+	}
 
-        let aSession = URLSession(configuration: URLSessionConfiguration.default)
-        let dataTask = URLSessionDataTaskMock(response: nil)
-        let error = NSError(domain: "", code: -1, userInfo: [:])
-        eventSource.urlSession(aSession, task: dataTask, didCompleteWithError: error)
-        wait(for: [expectation], timeout: 2.0)
-    }
+	func testOnCompleteError() {
+		let expectation = XCTestExpectation(description: "onComplete gets called")
+		eventSource.onComplete { statusCode, retry, error in
+			XCTAssertNotNil(error)
+			XCTAssertNil(retry)
+			XCTAssertNil(statusCode)
+			expectation.fulfill()
+		}
 
-    func testSmallEventStream() {
-        eventSource.connect()
-        eventSource.readyStateOpen()
+		let aSession = URLSession(configuration: URLSessionConfiguration.default)
+		let dataTask = URLSessionDataTaskMock(response: nil)
+		let error = NSError(domain: "", code: -1, userInfo: [:])
+		eventSource.urlSession(aSession, task: dataTask, didCompleteWithError: error)
+		wait(for: [expectation], timeout: 2.0)
+	}
 
-        var eventsIds: [String] = []
-        var eventNames: [String] = []
-        var eventDatas: [String] = []
+	func testSmallEventStream() {
+		eventSource.connect(url: url, headers: headers)
+		eventSource.readyStateOpen()
 
-        let exp = self.expectation(description: "onMessage gets called")
-        eventSource.onMessage { eventId, eventName, eventData in
-            eventsIds.append(eventId ?? "")
-            eventNames.append(eventName ?? "")
-            eventDatas.append(eventData ?? "")
+		var eventsIds: [String] = []
+		var eventNames: [String] = []
+		var eventDatas: [String] = []
 
-            if(eventsIds.count == 3) {
-                exp.fulfill()
-            }
-        }
+		let exp = self.expectation(description: "onMessage gets called")
+		eventSource.onMessage { eventId, eventName, eventData in
+			eventsIds.append(eventId ?? "")
+			eventNames.append(eventName ?? "")
+			eventDatas.append(eventData ?? "")
 
-        let eventsString = """
-        id: event-id-1
-        data: event-data-first
+			if(eventsIds.count == 3) {
+				exp.fulfill()
+			}
+		}
 
-        id: event-id-2
-        data: event-data-second
+		let eventsString = """
+		id: event-id-1
+		data: event-data-first
 
-        id: event-id-3
-        data: event-data-third
+		id: event-id-2
+		data: event-data-second
+
+		id: event-id-3
+		data: event-data-third
 
 
-        """
+		"""
 
-        let aSession = URLSession(configuration: URLSessionConfiguration.default)
-        let aSessionDataTask = URLSessionDataTask()
-        let data = eventsString.data(using: .utf8)!
-        eventSource.urlSession(aSession, dataTask: aSessionDataTask, didReceive: data)
+		let aSession = URLSession(configuration: URLSessionConfiguration.default)
+		let aSessionDataTask = URLSessionDataTask()
+		let data = eventsString.data(using: .utf8)!
+		eventSource.urlSession(aSession, dataTask: aSessionDataTask, didReceive: data)
 
-        waitForExpectations(timeout: 2) { _ in
-            XCTAssertEqual(eventsIds, ["event-id-1", "event-id-2", "event-id-3"])
-            XCTAssertEqual(eventNames, ["message", "message", "message"])
-            XCTAssertEqual(eventsIds, ["event-id-1", "event-id-2", "event-id-3"])
-        }
-    }
+		waitForExpectations(timeout: 2) { _ in
+			XCTAssertEqual(eventsIds, ["event-id-1", "event-id-2", "event-id-3"])
+			XCTAssertEqual(eventNames, ["message", "message", "message"])
+			XCTAssertEqual(eventsIds, ["event-id-1", "event-id-2", "event-id-3"])
+		}
+	}
 
-    func testDisconnet() {
-        eventSource.readyStateOpen()
-        eventSource.disconnect()
+	func testDisconnet() {
+		eventSource.readyStateOpen()
+		eventSource.disconnect()
 
-        XCTAssertEqual(eventSource.readyState, .closed)
-    }
+		XCTAssertEqual(eventSource.readyState, .closed)
+	}
 }
