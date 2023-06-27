@@ -20,7 +20,7 @@ public protocol EventSourceProtocol {
 	/// RetryTime: This can be changed remotly if the server sends an event `retry:`
 	var retryTime: Int { get }
 
-	/// The last event id received from server. This id is neccesary to keep track of the last event-id received to avoid
+	/// The last event id received from server. This id is necessary to keep track of the last event-id received to avoid
 	/// receiving duplicate events after a reconnection.
 	var lastEventId: String? { get }
 
